@@ -1,7 +1,7 @@
 // Mert Aga 241ADB159
 // https://github.com/mertaga146-lab/Mert-Aga-C
 // Compile with: gcc -O2 -Wall -Wextra -std=c17 -o calc calc.c -lm
-// Resources used: Claude (Anthropic AI) for program structure and code review; conversation history: https://claude.ai/chat/39e8c995-be44-4e1d-8415-1afe7ff12167. Details in comments where used.
+// Resources used: Claude (Anthropic AI) for program structure and code review; conversation history: https://claude.ai/share/fcb02354-7151-4c50-9b27-8a5a0d8e8c81. Details in comments where used.
 
 // With -std=c17 glibc hides POSIX functions (mkdir) unless this is defined.
 #define _POSIX_C_SOURCE 200809L
@@ -31,7 +31,7 @@
 // AI (Claude): I pasted the lab text and asked (in Turkish) to do the task
 // stage by stage, starting with a summary of the plan. Claude proposed
 // collecting results in a growable buffer and wrote Buf/buf_append (stage 1).
-// Link: https://claude.ai/chat/39e8c995-be44-4e1d-8415-1afe7ff12167
+// Link: https://claude.ai/share/fcb02354-7151-4c50-9b27-8a5a0d8e8c81
 typedef struct {
     char *data;
     size_t len;
@@ -63,7 +63,7 @@ static int buf_append(Buf *b, const char *s, size_t n) {
 // AI (Claude): after my repo and Codespace were ready and I uploaded
 // calc-tests.zip, Claude wrote this tokenizer (stage 1): tokens that remember
 // their offset in the whole file, plus the T_EOL token used for error positions.
-// Link: https://claude.ai/chat/39e8c995-be44-4e1d-8415-1afe7ff12167
+// Link: https://claude.ai/share/fcb02354-7151-4c50-9b27-8a5a0d8e8c81
 typedef enum {
     T_NUM, T_PLUS, T_MINUS, T_STAR, T_SLASH, T_POW,
     T_LPAREN, T_RPAREN,
@@ -74,7 +74,7 @@ typedef enum {
 // AI (Claude): stage 7. Claude wrote the float support (Value, the float
 // literal in the tokenizer, float_result and the float branches of the parser).
 // I replaced my file with it and ran run_tests.sh and cli.sh.
-// Link: https://claude.ai/chat/39e8c995-be44-4e1d-8415-1afe7ff12167
+// Link: https://claude.ai/share/fcb02354-7151-4c50-9b27-8a5a0d8e8c81
 // Integer or float? A number is a float only if its literal contains a '.';
 // the result of an operation is a float only if at least one operand is. So a
 // line without floats never touches double: it keeps exact long long
@@ -226,7 +226,7 @@ static Value float_result(Parser *p, double r, size_t op_pos) {
 // AI (Claude): stage 4. I wrote "baslayak" (let's start) and Claude wrote the
 // parenthesis handling in parse_primary (the missing/extra ")" rules). I ran
 // run_tests.sh afterwards: 28 passed at that point.
-// Link: https://claude.ai/chat/39e8c995-be44-4e1d-8415-1afe7ff12167
+// Link: https://claude.ai/share/fcb02354-7151-4c50-9b27-8a5a0d8e8c81
 // parse_primary and parse_expr call each other (a parenthesis starts a whole
 // new expression), so one of them needs a forward declaration.
 static Value parse_expr(Parser *p);
@@ -267,7 +267,7 @@ static Value parse_primary(Parser *p) {
 // AI (Claude): stage 5. Claude wrote parse_power (** right-associative,
 // negative exponent error, square-and-multiply) and changed parse_term to
 // call it; I replaced the code in my file and ran the tests (33 passed).
-// Link: https://claude.ai/chat/39e8c995-be44-4e1d-8415-1afe7ff12167
+// Link: https://claude.ai/share/fcb02354-7151-4c50-9b27-8a5a0d8e8c81
 // power := primary [ '**' power ]
 // The grammar is right-recursive: the exponent is itself a power, so
 // 2 ** 3 ** 2 groups as 2 ** (3 ** 2) = 512. That is why ** is
@@ -368,7 +368,7 @@ static Value parse_power(Parser *p) {
 // AI (Claude): stage 3. Claude wrote parse_term (* and /, precedence,
 // division-by-zero position) and rewired parse_expr to call it. I applied it
 // and ran run_tests.sh (20 passed at that point).
-// Link: https://claude.ai/chat/39e8c995-be44-4e1d-8415-1afe7ff12167
+// Link: https://claude.ai/share/fcb02354-7151-4c50-9b27-8a5a0d8e8c81
 // term := power { ('*' | '/') power }
 // term sits BELOW expr in the grammar, so expr only ever sees values that term
 // has already multiplied/divided. In "3 + 2 * 5", after '+' expr asks term for
@@ -477,7 +477,7 @@ static int eval_line(char *src, size_t start, size_t end,
 // by Claude in stage 1 (output file naming, no partial results on error).
 // Stage 5 added the '#' comment-line check inside process_file: I asked Claude
 // for the code and it gave me the changed file, which I replaced and tested.
-// Link: https://claude.ai/chat/39e8c995-be44-4e1d-8415-1afe7ff12167
+// Link: https://claude.ai/share/fcb02354-7151-4c50-9b27-8a5a0d8e8c81
 // Reads the whole file once. Everything else works on offsets into this one
 // buffer, so the lines are never copied or split into separate strings.
 static char *read_file(const char *path, size_t *len_out) {
@@ -635,7 +635,7 @@ static int process_file(const char *in_path, const char *out_dir) {
 // stage-by-stage plan and wrote process_dir, dir_base, default_out_dir and the
 // new main (-d/--dir, default output folder, exit codes). I replaced my file
 // and ran run_tests.sh and cli.sh (cli: all passed).
-// Link: https://claude.ai/chat/39e8c995-be44-4e1d-8415-1afe7ff12167
+// Link: https://claude.ai/share/fcb02354-7151-4c50-9b27-8a5a0d8e8c81
 
 // Last component of a folder path, ignoring trailing slashes:
 // "../in/" -> "in". With -d it names the default output folder.
