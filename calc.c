@@ -367,7 +367,13 @@ static int process_file(const char *in_path, const char *out_dir) {
 
         size_t i = ls;
         while (i < le && (src[i] == ' ' || src[i] == '\t')) i++;
-        if (i < le) { // blank lines produce no output
+        // Blank lines (i == le) and comment lines produce no output and are
+        // never errors. A line is a comment only if its FIRST non-blank
+        // character is '#'; a '#' later in the line is left to the tokenizer,
+        // which rejects it as an invalid character. We only skip the line's
+        // evaluation, not its bytes: ls still advances by the real line
+        // length, so error positions keep counting every comment character.
+        if (i < le && src[i] != '#') {
             long long v;
             if (eval_line(src, ls, le, &v, &err_pos)) {
                 char tmp[32];
