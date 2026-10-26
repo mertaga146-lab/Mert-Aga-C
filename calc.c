@@ -1,7 +1,7 @@
 // Mert Aga 241ADB159
 // https://github.com/mertaga146-lab/Mert-Aga-C
 // Compile with: gcc -O2 -Wall -Wextra -std=c17 -o calc calc.c -lm
-// Resources used: Claude (Anthropic AI) for program structure and code review; conversation history: <PASTE CHAT SHARE LINK HERE>. Details in comments where used.
+// Resources used: Claude (Anthropic AI) for program structure and code review; conversation history: https://claude.ai/chat/bc404b4f-57ec-4578-93c8-faca82d62377. Details in comments where used.
 
 // With -std=c17 glibc hides POSIX functions (mkdir) unless this is defined.
 #define _POSIX_C_SOURCE 200809L
@@ -193,21 +193,55 @@ static long long parse_primary(Parser *p) {
     return 0;
 }
 
-// term := primary { ('*' | '/') primary }
+// power := primary [ '**' power ]
+// The exponent is parsed by power() itself (not by primary), so
+// 2 ** 3 ** 2 groups as 2 ** (3 ** 2) = 512: the recursion on the right makes
+// ** right-associative. A loop, as in expr/term, would give (2 ** 3) ** 2.
+// power sits BELOW term, so 2 * 3 ** 2 is 2 * (3 ** 2): the exponent is
+// already computed when term sees the '*'.
+static long long parse_power(Parser *p) {
+    long long base = parse_primary(p);
+    if (p->failed || p->tok.kind != T_POW) return base;
+
+    next_token(p);
+    // A negative exponent is reported at the START of the exponent, which is
+    // only known before it is parsed, so remember it now.
+    size_t exp_pos = p->tok.pos;
+    long long exp = parse_power(p);
+    if (p->failed) return 0;
+    if (exp < 0) {
+        fail(p, exp_pos);
+        return 0;
+    }
+
+    // Square-and-multiply: O(log exp) multiplications, so something like
+    // 1 ** 1000000000 is instant. base is only squared while bits remain,
+    // which avoids a useless final squaring that could overflow.
+    // x ** 0 stays 1 for every x, including 0 ** 0.
+    long long result = 1;
+    while (exp > 0) {
+        if (exp & 1) result *= base;
+        exp >>= 1;
+        if (exp > 0) base *= base;
+    }
+    return result;
+}
+
+// term := power { ('*' | '/') power }
 // term sits BELOW expr in the grammar, so expr only ever sees values that term
 // has already multiplied/divided. In "3 + 2 * 5", after '+' expr asks term for
 // its right side and term consumes "2 * 5" first. That is what makes * and /
 // bind tighter than + and -. The loop makes them left-associative:
 // 100 / 7 / 2 is (100 / 7) / 2 = 7.
 static long long parse_term(Parser *p) {
-    long long left = parse_primary(p);
+    long long left = parse_power(p);
     while (!p->failed && (p->tok.kind == T_STAR || p->tok.kind == T_SLASH)) {
         TokKind op = p->tok.kind;
         next_token(p);
         // Remember where the right operand starts BEFORE parsing it: a zero
         // divisor is reported at that operand, not at the '/'.
         size_t right_pos = p->tok.pos;
-        long long right = parse_primary(p);
+        long long right = parse_power(p);
         if (p->failed) break;
         if (op == T_STAR) {
             left = left * right;
