@@ -156,14 +156,36 @@ static void fail(Parser *p, size_t pos) {
     }
 }
 
-// primary := NUMBER
-// If the current token is anything else, the parser "could not continue" at
-// that token, so the error is reported at its start. This single rule covers
-// an invalid character, a second operator in a row ("7 + * 3" fails at '*'),
-// and a missing operand at end of line (the EOL token's position).
+// parse_primary and parse_expr call each other (a parenthesis starts a whole
+// new expression), so one of them needs a forward declaration.
+static long long parse_expr(Parser *p);
+
+// primary := NUMBER | '(' expr ')'
+// A '(' restarts the grammar at the lowest level (expr), which is why
+// parentheses override precedence: in (2 + 3) * 4 the + is fully evaluated
+// inside primary before term ever sees the '*'.
+// Every other token is an error at that token's start: the parser "could not
+// continue" there. This one rule covers an invalid character, a second
+// operator in a row ("7 + * 3" fails at '*'), a missing operand at end of line
+// (the EOL token's position) and an empty "()" (fails at the ')').
 static long long parse_primary(Parser *p) {
     if (p->tok.kind == T_NUM) {
         long long v = p->tok.ival;
+        next_token(p);
+        return v;
+    }
+    if (p->tok.kind == T_LPAREN) {
+        next_token(p);
+        long long v = parse_expr(p);
+        if (p->failed) return 0;
+        // Missing ')' is reported at whatever token we are looking at instead
+        // of ')': at end of line that is the EOL token, i.e. the line's '\n'
+        // (or file length + 1), as required. An EXTRA ')' is not handled
+        // here; it is left over and eval_line reports it.
+        if (p->tok.kind != T_RPAREN) {
+            fail(p, p->tok.pos);
+            return 0;
+        }
         next_token(p);
         return v;
     }
