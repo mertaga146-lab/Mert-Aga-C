@@ -15,7 +15,6 @@
 #include <string.h>
 #include <sys/stat.h>
 
-// Used to build "<input>_<name>_<lastname>_<studentid>.txt".
 #define STUDENT_NAME "mert"
 #define STUDENT_LAST "aga"
 #define STUDENT_ID "241adb159"
@@ -29,8 +28,10 @@
 // just "ERROR:<pos>", so we cannot write partial output as we go.
 // Capacity doubles on growth, so appending n bytes costs O(n) in total even
 // for multi-megabyte inputs (no repeated copying of the whole buffer).
-// AI (Claude): prompt "how do I read a whole file into memory in C without
-// knowing its size" / "growable buffer with doubling in C" Link: <PASTE LINK>
+// AI (Claude): I pasted the lab text and asked (in Turkish) to do the task
+// stage by stage, starting with a summary of the plan. Claude proposed
+// collecting results in a growable buffer and wrote Buf/buf_append (stage 1).
+// Link: https://claude.ai/chat/bc404b4f-57ec-4578-93c8-faca82d62377
 typedef struct {
     char *data;
     size_t len;
@@ -59,17 +60,21 @@ static int buf_append(Buf *b, const char *s, size_t n) {
 /* Tokenizer                                                           */
 /* ------------------------------------------------------------------ */
 
+// AI (Claude): after my repo and Codespace were ready and I uploaded
+// calc-tests.zip, Claude wrote this tokenizer (stage 1): tokens that remember
+// their offset in the whole file, plus the T_EOL token used for error positions.
+// Link: https://claude.ai/chat/bc404b4f-57ec-4578-93c8-faca82d62377
 typedef enum {
     T_NUM, T_PLUS, T_MINUS, T_STAR, T_SLASH, T_POW,
     T_LPAREN, T_RPAREN,
-    T_EOL,  // end of the current line (the '\n', or end of file)
-    T_BAD   // a character that cannot start any token
+    T_EOL,
+    T_BAD
 } TokKind;
 
 typedef struct {
     TokKind kind;
     size_t pos;     // 0-based offset in the WHOLE file (not in the line)
-    long long ival; // value when kind == T_NUM
+    long long ival;
 } Token;
 
 // One Parser is reused for every line. src is the whole file; a line is just
@@ -77,10 +82,10 @@ typedef struct {
 typedef struct {
     const char *src;
     size_t end;     // offset of this line's '\n' (or file length)
-    size_t cur;     // next unread offset
+    size_t cur;
     Token tok;      // lookahead: the token the parser is "looking at"
     int failed;
-    size_t err_pos; // 0-based offset of the first error on this line
+    size_t err_pos;
 } Parser;
 
 // Positions: instead of counting characters line by line, every token stores
@@ -88,7 +93,6 @@ typedef struct {
 // already counts every character including each '\n' and comment lines, which
 // is exactly how the task defines positions. We add 1 only when printing.
 static void next_token(Parser *p) {
-    // Spaces and tabs are allowed anywhere between tokens.
     while (p->cur < p->end && (p->src[p->cur] == ' ' || p->src[p->cur] == '\t'))
         p->cur++;
 
@@ -156,6 +160,10 @@ static void fail(Parser *p, size_t pos) {
     }
 }
 
+// AI (Claude): stage 4. I wrote "baslayak" (let's start) and Claude wrote the
+// parenthesis handling in parse_primary (the missing/extra ")" rules). I ran
+// run_tests.sh afterwards: 28 passed at that point.
+// Link: https://claude.ai/chat/bc404b4f-57ec-4578-93c8-faca82d62377
 // parse_primary and parse_expr call each other (a parenthesis starts a whole
 // new expression), so one of them needs a forward declaration.
 static long long parse_expr(Parser *p);
@@ -193,6 +201,10 @@ static long long parse_primary(Parser *p) {
     return 0;
 }
 
+// AI (Claude): stage 5. Claude wrote parse_power (** right-associative,
+// negative exponent error, square-and-multiply) and changed parse_term to
+// call it; I replaced the code in my file and ran the tests (33 passed).
+// Link: https://claude.ai/chat/bc404b4f-57ec-4578-93c8-faca82d62377
 // power := primary [ '**' power ]
 // The exponent is parsed by power() itself (not by primary), so
 // 2 ** 3 ** 2 groups as 2 ** (3 ** 2) = 512: the recursion on the right makes
@@ -227,6 +239,10 @@ static long long parse_power(Parser *p) {
     return result;
 }
 
+// AI (Claude): stage 3. Claude wrote parse_term (* and /, precedence,
+// division-by-zero position) and rewired parse_expr to call it. I applied it
+// and ran run_tests.sh (20 passed at that point).
+// Link: https://claude.ai/chat/bc404b4f-57ec-4578-93c8-faca82d62377
 // term := power { ('*' | '/') power }
 // term sits BELOW expr in the grammar, so expr only ever sees values that term
 // has already multiplied/divided. In "3 + 2 * 5", after '+' expr asks term for
@@ -301,9 +317,22 @@ static int eval_line(const char *src, size_t start, size_t end,
 /* Files                                                               */
 /* ------------------------------------------------------------------ */
 
+// AI (Claude): read_file, input_base, ensure_dir and process_file were written
+// by Claude in stage 1 (output file naming, no partial results on error).
+// Stage 5 added the '#' comment-line check inside process_file: I asked Claude
+// for the code and it gave me the changed file, which I replaced and tested.
+// Link: https://claude.ai/chat/bc404b4f-57ec-4578-93c8-faca82d62377
 // Reads the whole file once. Everything else works on offsets into this one
 // buffer, so the lines are never copied or split into separate strings.
 static char *read_file(const char *path, size_t *len_out) {
+    // fopen("rb") happily opens a folder on Linux and ftell then returns a
+    // nonsense size, so reject folders up front with a readable error.
+    struct stat st;
+    errno = 0;
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+        errno = EISDIR;
+        return NULL;
+    }
     FILE *f = fopen(path, "rb");
     if (!f) return NULL;
     if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
@@ -319,7 +348,6 @@ static char *read_file(const char *path, size_t *len_out) {
     return data;
 }
 
-// "dir/task1.txt" -> "task1"
 static char *input_base(const char *path) {
     const char *slash = strrchr(path, '/');
     const char *name = slash ? slash + 1 : path;
@@ -332,7 +360,6 @@ static char *input_base(const char *path) {
     return base;
 }
 
-// Creates out_dir if missing; an existing directory is fine.
 static int ensure_dir(const char *out_dir) {
     if (mkdir(out_dir, 0777) == 0) return 1;
     if (errno == EEXIST) {
@@ -350,6 +377,15 @@ static int process_file(const char *in_path, const char *out_dir) {
     if (!src) {
         fprintf(stderr, "calc: cannot read '%s': %s\n", in_path,
                 errno ? strerror(errno) : "out of memory");
+        return 1;
+    }
+
+    // Created only now, after the input was read successfully, so a missing
+    // input file does not leave an empty output folder behind.
+    if (!ensure_dir(out_dir)) {
+        fprintf(stderr, "calc: cannot create output folder '%s': %s\n", out_dir,
+                strerror(errno));
+        free(src);
         return 1;
     }
 
@@ -430,24 +466,108 @@ static int process_file(const char *in_path, const char *out_dir) {
 }
 
 /* ------------------------------------------------------------------ */
-/* main                                                                */
+/* Command line                                                        */
 /* ------------------------------------------------------------------ */
+
+// AI (Claude): stage 6. Claude proposed it as the next step of our
+// stage-by-stage plan and wrote process_dir, dir_base, default_out_dir and the
+// new main (-d/--dir, default output folder, exit codes). I replaced my file
+// and ran run_tests.sh and cli.sh (cli: all passed).
+// Link: https://claude.ai/chat/bc404b4f-57ec-4578-93c8-faca82d62377
+
+// Last component of a folder path, ignoring trailing slashes:
+// "../in/" -> "in". With -d it names the default output folder.
+static char *dir_base(const char *path) {
+    size_t end = strlen(path);
+    while (end > 1 && path[end - 1] == '/') end--;
+    size_t start = end;
+    while (start > 0 && path[start - 1] != '/') start--;
+    size_t n = end - start;
+    char *base = malloc(n + 1);
+    if (!base) return NULL;
+    memcpy(base, path + start, n);
+    base[n] = '\0';
+    return base;
+}
+
+// Default output folder "<base>_<name>_<studentid>" in the current folder.
+static char *default_out_dir(const char *base) {
+    size_t n = strlen(base) + strlen(STUDENT_NAME) + strlen(STUDENT_ID) + 3;
+    char *d = malloc(n);
+    if (!d) return NULL;
+    snprintf(d, n, "%s_%s_%s", base, STUDENT_NAME, STUDENT_ID);
+    return d;
+}
+
+// Evaluates every regular *.txt file directly inside dir (no recursion).
+// One bad file must not stop the others, so failures are remembered in rc
+// and reported through the exit code at the end.
+static int process_dir(const char *dir, const char *out_dir) {
+    DIR *d = opendir(dir);
+    if (!d) {
+        fprintf(stderr, "calc: cannot open folder '%s': %s\n", dir,
+                strerror(errno));
+        return 1;
+    }
+    if (!ensure_dir(out_dir)) {
+        fprintf(stderr, "calc: cannot create output folder '%s': %s\n", out_dir,
+                strerror(errno));
+        closedir(d);
+        return 1;
+    }
+
+    int rc = 0;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        size_t n = strlen(e->d_name);
+        if (n <= 4 || strcmp(e->d_name + n - 4, ".txt") != 0) continue;
+
+        size_t plen = strlen(dir) + n + 2;
+        char *path = malloc(plen);
+        if (!path) {
+            fprintf(stderr, "calc: out of memory\n");
+            rc = 1;
+            break;
+        }
+        snprintf(path, plen, "%s/%s", dir, e->d_name);
+
+        // A subfolder could be called "x.txt"; only regular files count.
+        struct stat st;
+        if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
+            if (process_file(path, out_dir) != 0) rc = 1;
+        }
+        free(path);
+    }
+    closedir(d);
+    return rc;
+}
 
 static void usage(void) {
     fprintf(stderr,
             "usage: calc [-d DIR | --dir DIR] [-o OUTDIR | --output-dir OUTDIR] [input.txt]\n");
 }
 
+// Exit codes: 0 = all files processed (an ERROR:<pos> result is a normal
+// result, not a failure), 1 = something could not be read or written,
+// 2 = wrong command line.
 int main(int argc, char **argv) {
     const char *out_dir = NULL;
+    const char *in_dir = NULL;
     const char *input = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output-dir") == 0) {
             if (i + 1 >= argc) { usage(); return 2; }
             out_dir = argv[++i];
+        } else if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--dir") == 0) {
+            if (i + 1 >= argc) { usage(); return 2; }
+            in_dir = argv[++i];
         } else if (argv[i][0] == '-' && argv[i][1] != '\0') {
             fprintf(stderr, "calc: unknown option '%s'\n", argv[i]);
+            usage();
+            return 2;
+        } else if (input) {
+            fprintf(stderr, "calc: more than one input file given\n");
             usage();
             return 2;
         } else {
@@ -455,12 +575,22 @@ int main(int argc, char **argv) {
         }
     }
 
-    // Stage 1 only supports "calc -o OUTDIR input.txt".
-    if (!input || !out_dir) { usage(); return 2; }
-    if (!ensure_dir(out_dir)) {
-        fprintf(stderr, "calc: cannot create output folder '%s': %s\n", out_dir,
-                strerror(errno));
-        return 1;
+    // Exactly one of: an input file, or -d DIR.
+    if ((!input && !in_dir) || (input && in_dir)) { usage(); return 2; }
+
+    char *auto_out = NULL;
+    if (!out_dir) {
+        char *base = in_dir ? dir_base(in_dir) : input_base(input);
+        auto_out = base ? default_out_dir(base) : NULL;
+        free(base);
+        if (!auto_out) {
+            fprintf(stderr, "calc: out of memory\n");
+            return 1;
+        }
+        out_dir = auto_out;
     }
-    return process_file(input, out_dir);
+
+    int rc = in_dir ? process_dir(in_dir, out_dir) : process_file(input, out_dir);
+    free(auto_out);
+    return rc;
 }
