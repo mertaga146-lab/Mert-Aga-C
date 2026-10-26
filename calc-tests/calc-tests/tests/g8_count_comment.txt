@@ -1,2 +1,0 @@
-# comment characters are counted too
-1 +
