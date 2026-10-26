@@ -171,15 +171,45 @@ static long long parse_primary(Parser *p) {
     return 0;
 }
 
-// expr := primary { ('+' | '-') primary }
+// term := primary { ('*' | '/') primary }
+// term sits BELOW expr in the grammar, so expr only ever sees values that term
+// has already multiplied/divided. In "3 + 2 * 5", after '+' expr asks term for
+// its right side and term consumes "2 * 5" first. That is what makes * and /
+// bind tighter than + and -. The loop makes them left-associative:
+// 100 / 7 / 2 is (100 / 7) / 2 = 7.
+static long long parse_term(Parser *p) {
+    long long left = parse_primary(p);
+    while (!p->failed && (p->tok.kind == T_STAR || p->tok.kind == T_SLASH)) {
+        TokKind op = p->tok.kind;
+        next_token(p);
+        // Remember where the right operand starts BEFORE parsing it: a zero
+        // divisor is reported at that operand, not at the '/'.
+        size_t right_pos = p->tok.pos;
+        long long right = parse_primary(p);
+        if (p->failed) break;
+        if (op == T_STAR) {
+            left = left * right;
+        } else {
+            if (right == 0) {
+                fail(p, right_pos);
+                break;
+            }
+            // C's integer '/' already truncates toward zero, as required.
+            left = left / right;
+        }
+    }
+    return left;
+}
+
+// expr := term { ('+' | '-') term }
 // The loop (not recursion) makes + and - left-associative: 10 - 4 + 1 is
 // (10 - 4) + 1 = 7, not 10 - (4 + 1).
 static long long parse_expr(Parser *p) {
-    long long left = parse_primary(p);
+    long long left = parse_term(p);
     while (!p->failed && (p->tok.kind == T_PLUS || p->tok.kind == T_MINUS)) {
         TokKind op = p->tok.kind;
         next_token(p);
-        long long right = parse_primary(p);
+        long long right = parse_term(p);
         if (p->failed) break;
         left = (op == T_PLUS) ? left + right : left - right;
     }
